@@ -47,6 +47,8 @@ pub struct Markdown {
     pub external_links_no_follow: bool,
     /// Whether to set rel="noreferrer" for all external links
     pub external_links_no_referrer: bool,
+    /// Whether to wrap sections in a page with `<section>` tags
+    pub render_with_section_tags: bool,
     /// Whether smart punctuation is enabled (changing quotes, dashes, dots etc in their typographic form)
     pub smart_punctuation: bool,
     /// A list of directories to search for additional `.sublime-syntax` and `.tmTheme` files in.
@@ -195,6 +197,7 @@ impl Default for Markdown {
             external_links_target_blank: false,
             external_links_no_follow: false,
             external_links_no_referrer: false,
+            render_with_section_tags: false,
             smart_punctuation: false,
             extra_syntaxes_and_themes: vec![],
             extra_syntax_set: None,

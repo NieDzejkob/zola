@@ -1625,3 +1625,144 @@ fn can_use_smart_punctuation() {
     let res = render_content(r#"This -- is "it"..."#, &context).unwrap();
     assert_eq!(res.body, "<p>This – is “it”…</p>\n");
 }
+
+// this mitigates painful merge conflicts lolsob
+mod section_tag_tests {
+    #[test]
+    fn section_tags_none() {
+        // base case: no section tags are generated where no headings are present
+
+        let tera_ctx = Tera::default();
+        let mut config = Config::default();
+        config.markdown.render_with_section_tags = true;
+        let permalinks_ctx = HashMap::new();
+
+        let context = RenderContext::new(
+            &tera_ctx,
+            &config,
+            &config.default_language,
+            "",
+            &permalinks_ctx,
+            InsertAnchor::None,
+        );
+
+        let content = r#"A page without hierarchy
+    "#;
+
+        let res = render_content(content, &context).unwrap();
+
+        let expected = r#"<p>A page without hierarchy</p>
+    "#;
+
+        assert_eq!(res.body, expected);
+    }
+
+    #[test]
+    fn section_tags_same_level() {
+        // A section tag at the same level will close an opened section tag
+
+        let tera_ctx = Tera::default();
+        let mut config = Config::default();
+        config.markdown.render_with_section_tags = true;
+        let permalinks_ctx = HashMap::new();
+
+        let context = RenderContext::new(
+            &tera_ctx,
+            &config,
+            &config.default_language,
+            "",
+            &permalinks_ctx,
+            InsertAnchor::None,
+        );
+
+        let content = r#"## 1. Section One
+    Section One content
+    ## 2. Section Two
+    Section Two content
+    "#;
+
+        let res = render_content(content, &context).unwrap();
+
+        let expected = r#"<section><h2 id="1-section-one">1. Section One</h2>
+    <p>Section One content</p>
+    </section><section><h2 id="2-section-two">2. Section Two</h2>
+    <p>Section Two content</p>
+    </section>"#;
+
+        assert_eq!(res.body, expected);
+    }
+
+    #[test]
+    fn section_tags_nested_sections_get_closed() {
+        // Section tags nest properly, and opened tags are closed at the end of the document
+
+        let tera_ctx = Tera::default();
+        let mut config = Config::default();
+        config.markdown.render_with_section_tags = true;
+        let permalinks_ctx = HashMap::new();
+
+        let context = RenderContext::new(
+            &tera_ctx,
+            &config,
+            &config.default_language,
+            "",
+            &permalinks_ctx,
+            InsertAnchor::None,
+        );
+
+        let content = r#"## 1. S1
+    This is S1
+    ### 1.1 S1 A
+    This is S1 A
+    ## 2. S2
+    This is S2
+    ### 2.1 S2 A
+    This is S2 A
+    #### 2.1.1 S2 A i
+    This is S2 A i
+    "#;
+
+        let res = render_content(content, &context).unwrap();
+
+        // Note: the pattern is that newlines are inserted when the parser finds an event other than
+        // Event::Html (e.g. headings with id attributes and section tags will get squashed together
+        // on the same line)
+        let expected = r#"<section><h2 id="1-s1">1. S1</h2>
+    <p>This is S1</p>
+    <section><h3 id="1-1-s1-a">1.1 S1 A</h3>
+    <p>This is S1 A</p>
+    </section></section><section><h2 id="2-s2">2. S2</h2>
+    <p>This is S2</p>
+    <section><h3 id="2-1-s2-a">2.1 S2 A</h3>
+    <p>This is S2 A</p>
+    <section><h4 id="2-1-1-s2-a-i">2.1.1 S2 A i</h4>
+    <p>This is S2 A i</p>
+    </section></section></section>"#;
+
+        /* For reference, the above looks like this after tidying:
+         *
+         * <section>
+         *     <h2 id="1-s1">1. S1</h2>
+         *     <p>This is S1</p>
+         *     <section>
+         *         <h3>1.1 S1 A</h3>
+         *         <p>This is S1 A</p>
+         *     </section>
+         * </section>
+         * <section>
+         *     <h2 id="2-s2">2. S2</h2>
+         *     <p>This is S2</p>
+         *     <section>
+         *         <h3 id="2-1-s2-a">2.1 S2 A</h3>
+         *         <p>This is S2 A</p>
+         *         <section>
+         *             <h4 id="2-1-1-s2-a-i">2.1.1 S2 A i</h4>
+         *             <p>This is S2 A i</p>
+         *         </section>
+         *     </section>
+         * </section>
+         */
+
+        assert_eq!(res.body, expected);
+    }
+}
