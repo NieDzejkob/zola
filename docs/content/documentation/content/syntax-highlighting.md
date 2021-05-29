@@ -146,7 +146,6 @@ Here is a full list of supported languages and their short names:
 ```
 
 Note: due to some issues with the JavaScript syntax, the TypeScript syntax will be used instead.
-If 
 
 If you want to highlight a language not on this list, please open an issue or a pull request on the [Zola repo](https://github.com/getzola/zola).
 Alternatively, the `extra_syntaxes` configuration option can be used to add additional syntax files.
@@ -169,3 +168,86 @@ If your site source is laid out as follows:
 ```
 
 you would set your `extra_syntaxes` to `["syntaxes", "syntaxes/Sublime-Language1"]` to load `lang1.sublime-syntax` and `lang2.sublime-syntax`.
+
+## Custom Highlighting Themes
+
+The default *theme* for syntax highlighting is called `base16-ocean-dark`, you can choose another theme from the built in set of highlight themes using the `highlight_theme` configuration option.
+For example, this documentation site currently uses the `kronuz` theme, which is built in.
+
+```
+[markdown]
+highlight_code = true
+highlight_theme = "kronuz"
+```
+
+Alternatively, the `extra_highlight_themes` configuration option can be used to add additional theme files.
+You can load your own highlight theme from a TextMate `.tmTheme` file using the `extra_highlight_themes` option.
+
+It works the same way as the `extra_syntaxes` option. It should contain a list of paths to folders containing the .tmTheme files you want to include.
+You would then set `highlight_theme` to the name of one of these files, without the `.tmTheme` extension.
+
+If your site source is laid out as follows:
+
+```
+.
+├── config.toml
+├── content/
+│   └── ...
+├── static/
+│   └── ...
+├── highlight_themes/
+│   ├── MyGroovyTheme/
+│   │   └── theme1.tmTheme
+│   ├── theme2.tmTheme
+└── templates/
+    └── ...
+```
+
+you would set your `extra_highlight_themes` to `["highlight_themes", "highlight_themes/MyGroovyTheme"]` to load `theme1.tmTheme` and `theme2.tmTheme`.
+Then choose one of them to use, say theme2, by setting `highlight_theme = theme2`.
+
+Below is a full list of built in highlighting themes:
+```
+1337
+agola-dark
+ascetic-white
+axar
+ayu-dark
+ayu-light
+ayu-mirage
+base16-ocean-dark
+base16-ocean-light
+bbedit
+boron
+charcoal
+cheerfully-light
+classic-modified
+demain
+dimmed-fluid
+dracula
+gray-matter-dark
+green
+gruvbox-dark
+gruvbox-light
+idle
+inspired-github
+ir-white
+kronuz
+material-dark
+material-light
+monokai
+nord
+nyx-bold
+one-dark
+OneHalfDark
+OneHalfLight
+railsbase16-green-screen-dark
+solarized-dark
+solarized-light
+subway-madrid
+subway-moscow
+Tomorrow
+two-dark
+visual-studio-dark
+zenburn
+```

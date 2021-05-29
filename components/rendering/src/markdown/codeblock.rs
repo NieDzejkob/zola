@@ -1,19 +1,18 @@
-use config::highlighting::{get_highlighter, HighlightSource, SYNTAX_SET, THEME_SET};
+use config::highlighting::{get_highlighter, SyntaxSource};
 use config::Config;
 use std::cmp::min;
 use std::collections::HashSet;
 use syntect::easy::HighlightLines;
 use syntect::highlighting::{Color, Style, Theme};
 use syntect::html::{styled_line_to_highlighted_html, IncludeBackground};
-use syntect::parsing::SyntaxSet;
 
 use super::fence::{FenceSettings, Range};
 
-pub struct CodeBlock<'config> {
+pub struct CodeBlock {
     highlighter: HighlightLines<'static>,
-    extra_syntax_set: Option<&'config SyntaxSet>,
     background: IncludeBackground,
     theme: &'static Theme,
+    syntax_source: SyntaxSource,
 
     /// List of ranges of lines to highlight.
     highlight_lines: Vec<Range>,
@@ -21,44 +20,37 @@ pub struct CodeBlock<'config> {
     num_lines: usize,
 }
 
-impl<'config> CodeBlock<'config> {
+impl CodeBlock {
     pub fn new(
         fence_info: &str,
-        config: &'config Config,
+        config: &Config,
         background: IncludeBackground,
-        path: Option<&'config str>,
+        path: Option<&str>,
     ) -> Self {
         let fence_info = FenceSettings::new(fence_info);
-        let theme = &THEME_SET.themes[config.highlight_theme()];
-        let (highlighter, highlight_source) = get_highlighter(fence_info.language, config);
-        let extra_syntax_set = match highlight_source {
-            HighlightSource::Extra => config.markdown.extra_syntax_set.as_ref(),
-            HighlightSource::NotFound => {
-                // Language was not found, so it exists (safe unwrap)
-                let lang = fence_info.language.unwrap();
-                if let Some(path) = path {
-                    eprintln!("Warning: Highlight language {} not found in {}", lang, path);
-                } else {
-                    eprintln!("Warning: Highlight language {} not found", lang);
-                }
-                None
+        let theme = config.get_highlight_theme();
+        let (highlighter, syntax_source) = get_highlighter(fence_info.language, config);
+        if let SyntaxSource::NotFound = syntax_source {
+            let lang = fence_info.language.unwrap();
+            if let Some(path) = path {
+                eprintln!("Warning: Highlight language {} not found in {}", lang, path);
+            } else {
+                eprintln!("Warning: Highlight language {} not found", lang);
             }
-            _ => None,
         };
+
         Self {
             highlighter,
-            extra_syntax_set,
             background,
             theme,
-
+            syntax_source,
             highlight_lines: fence_info.highlight_lines,
             num_lines: 0,
         }
     }
 
     pub fn highlight(&mut self, text: &str) -> String {
-        let highlighted =
-            self.highlighter.highlight(text, self.extra_syntax_set.unwrap_or(&SYNTAX_SET));
+        let highlighted = self.highlighter.highlight(text, self.syntax_source.syntax_set());
         let line_boundaries = self.find_line_boundaries(&highlighted);
 
         // First we make sure that `highlighted` is split at every line

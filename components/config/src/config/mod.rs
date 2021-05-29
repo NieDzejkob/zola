@@ -10,10 +10,13 @@ use std::path::{Path, PathBuf};
 
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use serde_derive::{Deserialize, Serialize};
-use syntect::parsing::SyntaxSetBuilder;
+use syntect::highlighting::ThemeSet;
+use syntect::parsing::{SyntaxSet, SyntaxSetBuilder};
 use toml::Value as Toml;
 
-use crate::highlighting::THEME_SET;
+use crate::highlighting::{
+    BUILTIN_HIGHLIGHT_THEME_SET, EXTRA_HIGHLIGHT_THEME_SET, EXTRA_SYNTAX_SET,
+};
 use crate::theme::Theme;
 use errors::{bail, Error, Result};
 use utils::fs::read_file;
@@ -124,11 +127,6 @@ impl Config {
             bail!("A base URL is required in config.toml with key `base_url`");
         }
 
-        let highlight_theme = config.highlight_theme();
-        if !THEME_SET.themes.contains_key(highlight_theme) {
-            bail!("Highlight theme {} defined in config does not exist.", highlight_theme);
-        }
-
         if config.languages.iter().any(|l| l.code == config.default_language) {
             bail!("Default language `{}` should not appear both in `config.default_language` and `config.languages`", config.default_language)
         }
@@ -170,9 +168,55 @@ impl Config {
     /// Parses a config file from the given path
     pub fn from_file<P: AsRef<Path>>(path: P) -> Result<Config> {
         let path = path.as_ref();
-        let content = read_file(path)
-            .map_err(|e| errors::Error::chain("Failed to load config", e))?;
-        Config::parse(&content)
+        let content =
+            read_file(path).map_err(|e| errors::Error::chain("Failed to load config", e))?;
+
+        let config = Config::parse(&content)?;
+        let config_dir = path.parent().unwrap();
+        config.init_extra_syntaxes_and_highlight_themes(config_dir)?;
+
+        Ok(config)
+    }
+
+    // Initialise static once cells: EXTRA_SYNTAX_SET and EXTRA_HIGHLIGHT_THEME_SET
+    // They can only be initialised once, when building a new site the existing values are reused
+    fn init_extra_syntaxes_and_highlight_themes(&self, path: &Path) -> Result<()> {
+        if let Some(extra_syntax_set) = self.load_extra_syntaxes(path)? {
+            if EXTRA_SYNTAX_SET.get().is_none() {
+                EXTRA_SYNTAX_SET.set(extra_syntax_set).unwrap();
+            }
+        }
+        if let Some(extra_highlight_theme_set) = self.load_extra_highlight_themes(path)? {
+            if EXTRA_HIGHLIGHT_THEME_SET.get().is_none() {
+                EXTRA_HIGHLIGHT_THEME_SET.set(extra_highlight_theme_set).unwrap();
+            }
+        }
+
+        // validate that the chosen highlight_theme exists in the loaded highlight theme sets
+        if !BUILTIN_HIGHLIGHT_THEME_SET.themes.contains_key(self.highlight_theme()) {
+            if let Some(extra) = EXTRA_HIGHLIGHT_THEME_SET.get() {
+                if !extra.themes.contains_key(self.highlight_theme()) {
+                    bail!(
+                        "Highlight theme {} not found in the extra theme set",
+                        self.highlight_theme()
+                    )
+                }
+            } else {
+                bail!("Highlight theme {} not available.\n\
+                You can load custom themes by configuring `extra_highlight_themes` with a list of folders containing .tmTheme files", self.highlight_theme())
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Gets the configured highlight theme from the BUILTIN_HIGHLIGHT_THEME_SET or the EXTRA_HIGHLIGHT_THEME_SET
+    pub fn get_highlight_theme(&self) -> &'static syntect::highlighting::Theme {
+        if let Some(theme) = &BUILTIN_HIGHLIGHT_THEME_SET.themes.get(self.highlight_theme()) {
+            theme
+        } else {
+            &EXTRA_HIGHLIGHT_THEME_SET.get().unwrap().themes[self.highlight_theme()]
+        }
     }
 
     /// Temporary, while we have the settings in 2 places
@@ -214,19 +258,35 @@ impl Config {
 
     /// Attempt to load any extra syntax found in the extra syntaxes of the config
     /// TODO: move to markup.rs in 0.14
-    pub fn load_extra_syntaxes(&mut self, base_path: &Path) -> Result<()> {
+    pub fn load_extra_syntaxes(&self, base_path: &Path) -> Result<Option<SyntaxSet>> {
         let extra_syntaxes = self.extra_syntaxes();
         if extra_syntaxes.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
 
         let mut ss = SyntaxSetBuilder::new();
         for dir in &extra_syntaxes {
             ss.add_from_folder(base_path.join(dir), true)?;
         }
-        self.markdown.extra_syntax_set = Some(ss.build());
 
-        Ok(())
+        Ok(Some(ss.build()))
+    }
+
+    /// Attempt to load any theme sets found in the extra highlighting themes of the config
+    /// TODO: move to markup.rs in 0.14
+    pub fn load_extra_highlight_themes(&self, base_path: &Path) -> Result<Option<ThemeSet>> {
+        let extra_highlight_themes = self.markdown.extra_highlight_themes.clone();
+        if extra_highlight_themes.is_empty() {
+            return Ok(None);
+        }
+
+        let mut ts = ThemeSet::new();
+        for dir in &extra_highlight_themes {
+            ts.add_from_folder(base_path.join(dir))?;
+        }
+        let extra_theme_set = Some(ts);
+
+        Ok(extra_theme_set)
     }
 
     /// Makes a url, taking into account that the base url might have a trailing slash

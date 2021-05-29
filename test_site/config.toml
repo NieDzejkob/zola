@@ -13,7 +13,9 @@ ignored_content = ["*/ignored.md"]
 
 [markdown]
 highlight_code = true
+highlight_theme = "custom_gruvbox"
 extra_syntaxes = ["syntaxes"]
+extra_highlight_themes = ["highlight_themes"]
 
 [slugify]
 paths = "on"

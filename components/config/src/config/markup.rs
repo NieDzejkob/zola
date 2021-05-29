@@ -1,5 +1,4 @@
 use serde_derive::{Deserialize, Serialize};
-use syntect::parsing::SyntaxSet;
 
 pub const DEFAULT_HIGHLIGHT_THEME: &str = "base16-ocean-dark";
 
@@ -25,9 +24,8 @@ pub struct Markdown {
 
     /// A list of directories to search for additional `.sublime-syntax` files in.
     pub extra_syntaxes: Vec<String>,
-    /// The compiled extra syntaxes into a syntax set
-    #[serde(skip_serializing, skip_deserializing)] // not a typo, 2 are need
-    pub extra_syntax_set: Option<SyntaxSet>,
+    /// A list of directories to search for additional `.tmTheme` files in.
+    pub extra_highlight_themes: Vec<String>,
 }
 
 impl Markdown {
@@ -74,7 +72,7 @@ impl Default for Markdown {
             external_links_no_referrer: false,
             smart_punctuation: false,
             extra_syntaxes: vec![],
-            extra_syntax_set: None,
+            extra_highlight_themes: vec![],
         }
     }
 }

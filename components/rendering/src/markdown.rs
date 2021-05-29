@@ -5,7 +5,6 @@ use syntect::html::{start_highlighted_html_snippet, IncludeBackground};
 
 use crate::context::RenderContext;
 use crate::table_of_contents::{make_table_of_contents, Heading};
-use config::highlighting::THEME_SET;
 use errors::{Error, Result};
 use front_matter::InsertAnchor;
 use utils::site::resolve_internal_link;
@@ -227,7 +226,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
                             return Event::Html("<pre><code>".into());
                         }
 
-                        let theme = &THEME_SET.themes[context.config.highlight_theme()];
+                        let theme = context.config.get_highlight_theme();
                         match kind {
                             cmark::CodeBlockKind::Indented => (),
                             cmark::CodeBlockKind::Fenced(fence_info) => {
