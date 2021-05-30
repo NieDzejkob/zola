@@ -30,7 +30,7 @@ impl CodeBlock {
         path: Option<&str>,
     ) -> Self {
         let fence_info = FenceSettings::new(fence_info);
-        let theme = config.get_highlight_theme();
+        let theme = config.markdown.get_highlight_theme();
         let (highlighter, syntax_source) = get_highlighter(fence_info.language, config);
         if let SyntaxSource::NotFound = syntax_source {
             let lang = fence_info.language.unwrap();

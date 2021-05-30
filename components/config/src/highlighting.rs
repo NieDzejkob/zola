@@ -41,7 +41,7 @@ pub fn get_highlighter(
     language: Option<&str>,
     config: &Config,
 ) -> (HighlightLines<'static>, SyntaxSource) {
-    let theme = config.get_highlight_theme();
+    let theme = config.markdown.get_highlight_theme();
 
     let mut source = SyntaxSource::Plain;
     if let Some(lang) = language {

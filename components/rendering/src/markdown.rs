@@ -225,7 +225,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
                             return Event::Html("<pre><code>".into());
                         }
 
-                        let theme = context.config.get_highlight_theme();
+                        let theme = context.config.markdown.get_highlight_theme();
                         match kind {
                             cmark::CodeBlockKind::Indented => (),
                             cmark::CodeBlockKind::Fenced(fence_info) => {

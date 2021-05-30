@@ -1,6 +1,15 @@
 use std::path::Path;
 
+use errors::{bail, Result};
 use serde_derive::{Deserialize, Serialize};
+use syntect::{
+    highlighting::ThemeSet,
+    parsing::{SyntaxSet, SyntaxSetBuilder},
+};
+
+use crate::highlighting::{
+    BUILTIN_HIGHLIGHT_THEME_SET, EXTRA_HIGHLIGHT_THEME_SET, EXTRA_SYNTAX_SET,
+};
 
 pub const DEFAULT_HIGHLIGHT_THEME: &str = "base16-ocean-dark";
 
@@ -31,17 +40,74 @@ pub struct Markdown {
 }
 
 impl Markdown {
+    /// Gets the configured highlight theme from the BUILTIN_HIGHLIGHT_THEME_SET or the EXTRA_HIGHLIGHT_THEME_SET
+    pub fn get_highlight_theme(&self) -> &'static syntect::highlighting::Theme {
+        if let Some(theme) = &BUILTIN_HIGHLIGHT_THEME_SET.themes.get(&self.highlight_theme) {
+            theme
+        } else {
+            &EXTRA_HIGHLIGHT_THEME_SET.get().unwrap().themes[&self.highlight_theme]
+        }
+    }
+
+    /// Attempt to load any theme sets found in the extra highlighting themes of the config
+    /// TODO: move to markup.rs in 0.14
+    pub fn load_extra_highlight_themes(&self, base_path: &Path) -> Result<Option<ThemeSet>> {
+        let extra_highlight_themes = self.extra_highlight_themes.clone();
+        if extra_highlight_themes.is_empty() {
+            return Ok(None);
+        }
+
+        let mut ts = ThemeSet::new();
+        for dir in &extra_highlight_themes {
+            ts.add_from_folder(base_path.join(dir))?;
+        }
+        let extra_theme_set = Some(ts);
+
+        Ok(extra_theme_set)
+    }
+
     /// Attempt to load any extra syntax found in the extra syntaxes of the config
-    pub fn load_extra_syntaxes(&mut self, base_path: &Path) -> Result<()> {
+    pub fn load_extra_syntaxes(&self, base_path: &Path) -> Result<Option<SyntaxSet>> {
         if self.extra_syntaxes.is_empty() {
-            return Ok(());
+            return Ok(None);
         }
 
         let mut ss = SyntaxSetBuilder::new();
         for dir in &self.extra_syntaxes {
             ss.add_from_folder(base_path.join(dir), true)?;
         }
-        self.extra_syntax_set = Some(ss.build());
+
+        Ok(Some(ss.build()))
+    }
+
+    // Initialise static once cells: EXTRA_SYNTAX_SET and EXTRA_HIGHLIGHT_THEME_SET
+    // They can only be initialised once, when building a new site the existing values are reused
+    pub(crate) fn init_extra_syntaxes_and_highlight_themes(&self, path: &Path) -> Result<()> {
+        if let Some(extra_syntax_set) = self.load_extra_syntaxes(path)? {
+            if EXTRA_SYNTAX_SET.get().is_none() {
+                EXTRA_SYNTAX_SET.set(extra_syntax_set).unwrap();
+            }
+        }
+        if let Some(extra_highlight_theme_set) = self.load_extra_highlight_themes(path)? {
+            if EXTRA_HIGHLIGHT_THEME_SET.get().is_none() {
+                EXTRA_HIGHLIGHT_THEME_SET.set(extra_highlight_theme_set).unwrap();
+            }
+        }
+
+        // validate that the chosen highlight_theme exists in the loaded highlight theme sets
+        if !BUILTIN_HIGHLIGHT_THEME_SET.themes.contains_key(&self.highlight_theme) {
+            if let Some(extra) = EXTRA_HIGHLIGHT_THEME_SET.get() {
+                if !extra.themes.contains_key(&self.highlight_theme) {
+                    bail!(
+                        "Highlight theme {} not found in the extra theme set",
+                        &self.highlight_theme
+                    )
+                }
+            } else {
+                bail!("Highlight theme {} not available.\n\
+                You can load custom themes by configuring `extra_highlight_themes` with a list of folders containing .tmTheme files", &self.highlight_theme)
+            }
+        }
 
         Ok(())
     }
