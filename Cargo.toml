@@ -44,6 +44,10 @@ site = { path = "components/site" }
 errors = { path = "components/errors" }
 front_matter = { path = "components/front_matter" }
 utils = { path = "components/utils" }
+search = { path = "components/search" }
+
+[dev-dependencies]
+same-file = "1"
 
 [workspace]
 members = [
@@ -63,3 +67,8 @@ members = [
 [profile.release]
 lto = true
 codegen-units = 1
+
+[profile.dev]
+# Disabling debug info speeds up builds a bunch,
+# and we don't rely on it for debugging that much.
+debug = 0

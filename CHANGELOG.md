@@ -1,15 +1,32 @@
 # Changelog
 
-## unreleased
+## 0.14.0 (unreleased)
 
 ### Breaking
 
 - Newlines are now required after the closing `+++` of front-matter
+- i18n rework: languages now have their sections in `config.toml` to set up all their options
+  1. taxonomies don't have a `lang` anymore in the config, you need to declare them in their respective language section
+  2. the `config` variable in templates has been changed and is now a stripped down language aware version of the previous `config`
+  object
+  3. Search settings are now language specific
+  4. Translations are now nested in the languages table
 
 ### Other
 
 - internal links are now resolved in the `markdown` filter in the templates (#1296 #1316)
 - Add a `required` argument to `load_data` so it can be allowed to fail
+- `get_file_hash` now supports returning the base64 encoded hash
+- the `markdown` filter not renders shortcodes
+- Image processing now supports WebP
+- Fix `zola serve` failing for some static files
+- Fix `zola serve` not picking up directory renaming
+- Add `path` to the taxonomy terms to be on par with pages and sections
+- Add the `base16-aterlierdune-light` syntax highlight theme
+- Improve link checking: less concurrency and try to not overload the servers
+- Allow using POST for `load_data`, along with a body to POST and allow it to fail
+- Add Zig and Protobuf syntax highlighting
+- Footnotes links are now stripped from summaries - they were not linking to anything.
 
 ## 0.13.0 (2021-01-09)
 

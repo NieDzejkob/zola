@@ -64,7 +64,8 @@ Zola adds a few filters in addition to [those](https://tera.netlify.com/docs/#fi
 in Tera.
 
 ### markdown
-Converts the given variable to HTML using Markdown. Shortcodes won't work within this filter.
+Converts the given variable to HTML using Markdown. Please note that shortcodes evaluated by this filter cannot access the current rendering context. `config` will be available, but accessing `section` or `page` (among others) from a shortcode called within the `markdown` filter will prevent your site from building. See [this discussion](https://github.com/getzola/zola/pull/1358).
+
 By default, the filter will wrap all text in a paragraph. To disable this behaviour, you can
 pass `true` to the inline argument:
 
@@ -143,26 +144,34 @@ An example is:
 In the case of non-internal links, you can also add a cachebust of the format `?h=<sha256>` at the end of a URL
 by passing `cachebust=true` to the `get_url` function.
 
-
 ### `get_file_hash`
 
-Gets the hash digest for a static file. Supported hashes are SHA-256, SHA-384 (default) and SHA-512. Requires `path`. The `sha_type` key is optional and must be one of 256, 384 or 512.
+Returns the hash digest of a static file. Supported hashing algorithms are
+SHA-256, SHA-384 (default) and SHA-512. Requires `path`. The `sha_type`
+parameter is optional and must be one of 256, 384 or 512.
 
 ```jinja2
 {{/* get_file_hash(path="js/app.js", sha_type=256) */}}
 ```
 
-This can be used to implement subresource integrity. Do note that subresource integrity is typically used when using external scripts, which `get_file_hash` does not support.
+The function can also output a base64-encoded hash value when its `base64`
+parameter is set to `true`. This can be used to implement [subresource
+integrity](https://developer.mozilla.org/en-US/docs/Web/Security/Subresource_Integrity).
 
 ```jinja2
 <script src="{{/* get_url(path="js/app.js") */}}"
-        integrity="sha384-{{/* get_file_hash(path="js/app.js", sha_type=384) */}}"></script>
+  integrity="sha384-{{ get_file_hash(path="js/app.js", sha_type=384, base64=true) | safe }}"></script>
 ```
 
-Whenever hashing files, whether using `get_file_hash` or `get_url(..., cachebust=true)`, the file is searched for in three places: `static/`, `content/` and the output path (so e.g. compiled SASS can be hashed, too.)
+Do note that subresource integrity is typically used when using external
+scripts, which `get_file_hash` does not support.
 
+Whenever hashing files, whether using `get_file_hash` or `get_url(...,
+cachebust=true)`, the file is searched for in three places: `static/`,
+`content/` and the output path (so e.g. compiled SASS can be hashed, too.)
 
 ### `get_image_metadata`
+
 Gets metadata for an image. This supports common formats like JPEG, PNG, as well as SVG.
 Currently, the only supported keys are `width` and `height`.
 
@@ -328,6 +337,28 @@ as below.
 ```jinja2
 {% set response = load_data(url="https://api.github.com/repos/getzola/zola", format="json") %}
 {{ response }}
+```
+
+When no other parameters are specified the URL will always be retrieved using a HTTP GET request.
+Using the parameter `method`, since version 0.14.0, you can also choose to retrieve the URL using a POST request.
+
+When using `method="POST"` you can also use the parameters `body` and `content_type`.
+The parameter body is the actual contents sent in the POST request.
+The parameter `content_type` should be the mimetype of the body.
+
+This example will make a POST request to the kroki service to generate a SVG.
+
+```jinja2
+{% set postdata = load_data(url="https://kroki.io/blockdiag/svg", format="plain", method="POST" ,content_type="text/plain", body="blockdiag {
+  'Doing POST' -> 'using load_data'
+  'using load_data' -> 'can generate' -> 'block diagrams';
+  'using load_data' -> is -> 'very easy!';
+
+  'Doing POST' [color = 'greenyellow'];
+  'block diagrams' [color = 'pink'];
+  'very easy!' [color = 'orange'];
+}")%}
+{{postdata|safe}}
 ```
 
 #### Data caching

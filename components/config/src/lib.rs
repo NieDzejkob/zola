@@ -1,8 +1,10 @@
 mod config;
 pub mod highlighting;
 mod theme;
+
 pub use crate::config::{
-    languages::Language, link_checker::LinkChecker, slugify::Slugify, taxonomies::Taxonomy, Config,
+    languages::LanguageOptions, link_checker::LinkChecker, search::Search, slugify::Slugify,
+    taxonomies::Taxonomy, Config,
 };
 use errors::Result;
 

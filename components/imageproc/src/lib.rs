@@ -207,6 +207,7 @@ impl Hash for Format {
         };
 
         hasher.write_u8(q);
+        hasher.write(self.extension().as_bytes());
     }
 }
 
@@ -316,11 +317,10 @@ impl ImageOp {
             Format::WebP(q) => {
                 let encoder = webp::Encoder::from_image(&img);
                 let memory = match q {
-                    Some(q) => encoder.encode(q as f32 / 100.),
+                    Some(q) => encoder.encode(q as f32),
                     None => encoder.encode_lossless(),
                 };
-                let mut bytes = memory.as_bytes();
-                f.write_all(&mut bytes)?;
+                f.write_all(&memory.as_bytes())?;
             }
         }
 

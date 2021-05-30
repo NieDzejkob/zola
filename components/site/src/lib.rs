@@ -20,7 +20,7 @@ use front_matter::InsertAnchor;
 use library::{find_taxonomies, Library, Page, Paginator, Section, Taxonomy};
 use relative_path::RelativePathBuf;
 use std::time::Instant;
-use templates::render_redirect_template;
+use templates::{load_tera, render_redirect_template};
 use utils::fs::{
     copy_directory, copy_file_if_needed, create_directory, create_file, ensure_directory_exists,
 };
@@ -73,7 +73,7 @@ impl Site {
         let path = path.as_ref();
         let config_file = config_file.as_ref();
         let mut config = get_config(config_file)?;
-        config.load_extra_syntaxes(path)?;
+        config.markdown.load_extra_syntaxes(path)?;
 
         if let Some(theme) = config.theme.clone() {
             // Grab data from the extra section of the theme
@@ -81,7 +81,7 @@ impl Site {
                 .merge_with_theme(&path.join("themes").join(&theme).join("theme.toml"), &theme)?;
         }
 
-        let tera = tpls::load_tera(path, &config)?;
+        let tera = load_tera(path, &config)?;
 
         let content_path = path.join("content");
         let static_path = path.join("static");
@@ -124,13 +124,10 @@ impl Site {
 
     /// The index sections are ALWAYS at those paths
     /// There are one index section for the default language + 1 per language
-    fn index_section_paths(&self) -> Vec<(PathBuf, Option<String>)> {
+    fn index_section_paths(&self) -> Vec<(PathBuf, Option<&str>)> {
         let mut res = vec![(self.content_path.join("_index.md"), None)];
-        for language in &self.config.languages {
-            res.push((
-                self.content_path.join(format!("_index.{}.md", language.code)),
-                Some(language.code.clone()),
-            ));
+        for (code, _) in self.config.other_languages() {
+            res.push((self.content_path.join(format!("_index.{}.md", code)), Some(code)));
         }
         res
     }
@@ -176,8 +173,12 @@ impl Site {
         // which we can only decide to use after we've deserialised the section
         // so it's kinda necessecary
         let mut dir_walker = WalkDir::new(format!("{}/{}", base_path, "content/")).into_iter();
-        let mut allowed_index_filenames: Vec<_> =
-            self.config.languages.iter().map(|l| format!("_index.{}.md", l.code)).collect();
+        let mut allowed_index_filenames: Vec<_> = self
+            .config
+            .other_languages()
+            .iter()
+            .map(|(code, _)| format!("_index.{}.md", code))
+            .collect();
         allowed_index_filenames.push("_index.md".to_string());
 
         loop {
@@ -228,7 +229,7 @@ impl Site {
                         Ok(f) => {
                             let path_str = f.path().file_name().unwrap().to_str().unwrap();
                             if f.path().is_file()
-                                && allowed_index_filenames.iter().find(|&s| *s == path_str).is_some()
+                                && allowed_index_filenames.iter().any(|s| s == path_str)
                             {
                                 Some(f)
                             } else {
@@ -243,17 +244,8 @@ impl Site {
                     .collect::<Vec<DirEntry>>();
 
                 for index_file in index_files {
-                    let section = match Section::from_file(
-                        index_file.path(),
-                        &self.config,
-                        &self.base_path,
-                    ) {
-                        Err(e) => {
-                            println!("Failed to load section: {:?}", e);
-                            continue;
-                        }
-                        Ok(sec) => sec,
-                    };
+                    let section =
+                        Section::from_file(index_file.path(), &self.config, &self.base_path)?;
 
                     // if the section is drafted we can skip the enitre dir
                     if section.meta.draft && !self.include_drafts {
@@ -264,13 +256,7 @@ impl Site {
                     self.add_section(section, false)?;
                 }
             } else {
-                let page = match Page::from_file(path, &self.config, &self.base_path) {
-                    Err(e) => {
-                        println!("Failed to load page: {:?}", e);
-                        continue;
-                    }
-                    Ok(p) => p,
-                };
+                let page = Page::from_file(path, &self.config, &self.base_path)?;
 
                 // should we skip drafts?
                 if page.meta.draft && !self.include_drafts {
@@ -296,7 +282,7 @@ impl Site {
         // taxonomy Tera fns are loaded in `register_early_global_fns`
         // so we do need to populate it first.
         self.populate_taxonomies()?;
-        tpls::register_early_global_fns(self);
+        tpls::register_early_global_fns(self)?;
         self.populate_sections();
         self.render_markdown()?;
         tpls::register_tera_global_fns(self);
@@ -672,13 +658,13 @@ impl Site {
             start = log_time(start, "Generated feed in default language");
         }
 
-        for lang in &self.config.languages {
-            if !lang.feed {
+        for (code, language) in &self.config.other_languages() {
+            if !language.generate_feed {
                 continue;
             }
             let pages =
-                library.pages_values().iter().filter(|p| p.lang == lang.code).cloned().collect();
-            self.render_feed(pages, Some(&PathBuf::from(lang.code.clone())), &lang.code, |c| c)?;
+                library.pages_values().iter().filter(|p| &p.lang == code).cloned().collect();
+            self.render_feed(pages, Some(&PathBuf::from(code)), &code, |c| c)?;
             start = log_time(start, "Generated feed in other language");
         }
 
@@ -716,17 +702,13 @@ impl Site {
             ),
         )?;
 
-        for language in &self.config.languages {
-            if language.code != self.config.default_language && language.search {
+        for (code, language) in &self.config.other_languages() {
+            if code != &self.config.default_language && language.build_search_index {
                 create_file(
-                    &self.output_path.join(&format!("search_index.{}.js", &language.code)),
+                    &self.output_path.join(&format!("search_index.{}.js", &code)),
                     &format!(
                         "window.searchIndex = {};",
-                        search::build_index(
-                            &language.code,
-                            &self.library.read().unwrap(),
-                            &self.config
-                        )?
+                        search::build_index(&code, &self.library.read().unwrap(), &self.config)?
                     ),
                 )?;
             }
@@ -778,7 +760,7 @@ impl Site {
     pub fn render_404(&self) -> Result<()> {
         ensure_directory_exists(&self.output_path)?;
         let mut context = Context::new();
-        context.insert("config", &self.config);
+        context.insert("config", &self.config.serialize(&self.config.default_language));
         context.insert("lang", &self.config.default_language);
         let output = render_template("404.html", &self.tera, context, &self.config.theme)?;
         let content = self.inject_livereload(output);
@@ -790,7 +772,7 @@ impl Site {
     pub fn render_robots(&self) -> Result<()> {
         ensure_directory_exists(&self.output_path)?;
         let mut context = Context::new();
-        context.insert("config", &self.config);
+        context.insert("config", &self.config.serialize(&self.config.default_language));
         let content = render_template("robots.txt", &self.tera, context, &self.config.theme)?;
         self.write_content(&[], "robots.txt", content, false)?;
         Ok(())
@@ -813,8 +795,8 @@ impl Site {
         ensure_directory_exists(&self.output_path)?;
 
         let mut components = Vec::new();
-        if taxonomy.kind.lang != self.config.default_language {
-            components.push(taxonomy.kind.lang.as_ref());
+        if taxonomy.lang != self.config.default_language {
+            components.push(taxonomy.lang.as_ref());
         }
 
         components.push(taxonomy.slug.as_ref());
@@ -848,11 +830,7 @@ impl Site {
                     self.render_feed(
                         item.pages.iter().map(|p| library.get_page_by_key(*p)).collect(),
                         Some(&PathBuf::from(format!("{}/{}", taxonomy.slug, item.slug))),
-                        if self.config.is_multilingual() && !taxonomy.kind.lang.is_empty() {
-                            &taxonomy.kind.lang
-                        } else {
-                            &self.config.default_language
-                        },
+                        &taxonomy.lang,
                         |mut context: Context| {
                             context.insert("taxonomy", &taxonomy.kind);
                             context

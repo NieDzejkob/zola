@@ -9,12 +9,10 @@ need to enable it in the [configuration](@/documentation/getting-started/configu
 Once this is done, Zola will automatically highlight all code blocks
 in your content. A code block in Markdown looks like the following:
 
-````md
-
+````
 ```rust
 let highlight = true;
 ```
-
 ````
 
 You can replace `rust` with another language or not put anything to get the text
@@ -35,6 +33,7 @@ Here is a full list of supported languages and their short names:
 - C -> ["c", "h"]
 - C# -> ["cs", "csx"]
 - C++ -> ["C", "c++", "cc", "cp", "cpp", "cxx", "h", "h++", "hh", "hpp", "hxx", "inl", "ipp"]
+- Clojure -> ["clj", "cljc", "cljs", "edn"]
 - ClojureC -> ["boot", "clj", "cljc", "cljs", "cljx"]
 - CMake -> ["CMakeLists.txt", "cmake"]
 - CMake C Header -> ["h.in"]
@@ -112,6 +111,8 @@ Here is a full list of supported languages and their short names:
 - PHP -> ["php", "php3", "php4", "php5", "php7", "phps", "phpt", "phtml"]
 - Plain Text -> ["txt"]
 - PowerShell -> ["ps1", "psd1", "psm1"]
+- Protocol Buffer -> ["proto", "protodevel"]
+- Protocol Buffer (TEXT) -> ["pb.txt", "pbtxt", "proto.text", "prototxt", "textpb"]
 - PureScript -> ["purs"]
 - Python -> ["SConscript", "SConstruct", "Sconstruct", "Snakefile", "bazel", "bzl", "cpy", "gyp", "gypi", "pxd", "pxd.in", "pxi", "pxi.in", "py", "py3", "pyi", "pyw", "pyx", "pyx.in", "rpy", "sconstruct", "vpy", "wscript"]
 - R -> ["R", "Rprofile", "r"]
@@ -143,6 +144,7 @@ Here is a full list of supported languages and their short names:
 - VimL -> ["vim"]
 - XML -> ["dtml", "opml", "rng", "rss", "svg", "tld", "xml", "xsd", "xslt"]
 - YAML -> ["sublime-syntax", "yaml", "yml"]
+- Zig -> ["zig"]
 ```
 
 Note: due to some issues with the JavaScript syntax, the TypeScript syntax will be used instead.

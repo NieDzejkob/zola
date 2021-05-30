@@ -25,8 +25,10 @@ lazy_static! {
     // Based on https://regex101.com/r/H2n38Z/1/tests
     // A regex parsing RFC3339 date followed by {_,-}, some characters and ended by .md
     static ref RFC3339_DATE: Regex = Regex::new(
-        r"^(?P<datetime>(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(T([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)([01][0-9]|2[0-3]):([0-5][0-9])))?)(_|-)(?P<slug>.+$)"
+        r"^(?P<datetime>(\d{4})-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])(T([01][0-9]|2[0-3]):([0-5][0-9]):([0-5][0-9]|60)(\.[0-9]+)?(Z|(\+|-)([01][0-9]|2[0-3]):([0-5][0-9])))?)\s?(_|-)(?P<slug>.+$)"
     ).unwrap();
+
+    static ref FOOTNOTES_RE: Regex = Regex::new(r"<sup\s*.*?>\s*.*?</sup>").unwrap();
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -58,6 +60,10 @@ pub struct Page {
     /// When <!-- more --> is found in the text, will take the content up to that part
     /// as summary
     pub summary: Option<String>,
+    /// The earlier updated page, for pages sorted by updated date
+    pub earlier_updated: Option<DefaultKey>,
+    /// The later updated page, for pages sorted by updated date
+    pub later_updated: Option<DefaultKey>,
     /// The earlier page, for pages sorted by date
     pub earlier: Option<DefaultKey>,
     /// The later page, for pages sorted by date
@@ -82,12 +88,11 @@ pub struct Page {
     pub lang: String,
     /// Contains all the translated version of that page
     pub translations: Vec<DefaultKey>,
-    /// Contains the internal links that have an anchor: we can only check the anchor
-    /// after all pages have been built and their ToC compiled. The page itself should exist otherwise
-    /// it would have errored before getting there
-    /// (path to markdown, anchor value)
-    pub internal_links_with_anchors: Vec<(String, String)>,
-    /// Contains the external links that need to be checked
+    /// The list of all internal links (as path to markdown file), with optional anchor fragments.
+    /// We can only check the anchor after all pages have been built and their ToC compiled.
+    /// The page itself should exist otherwise it would have errored before getting there.
+    pub internal_links: Vec<(String, Option<String>)>,
+    /// The list of all links to external webpages. They can be validated by the `link_checker`.
     pub external_links: Vec<String>,
 }
 
@@ -249,8 +254,14 @@ impl Page {
         config: &Config,
         anchor_insert: InsertAnchor,
     ) -> Result<()> {
-        let mut context =
-            RenderContext::new(tera, config, &self.permalink, permalinks, anchor_insert);
+        let mut context = RenderContext::new(
+            tera,
+            config,
+            &self.lang,
+            &self.permalink,
+            permalinks,
+            anchor_insert,
+        );
 
         context.tera_context.insert("page", &SerializingPage::from_page_basic(self, None));
 
@@ -258,11 +269,15 @@ impl Page {
             Error::chain(format!("Failed to render content of {}", self.file.path.display()), e)
         })?;
 
-        self.summary = res.summary_len.map(|l| res.body[0..l].to_owned());
+        self.summary = if let Some(s) = res.summary_len.map(|l| &res.body[0..l]) {
+            Some(FOOTNOTES_RE.replace(s, "").into_owned())
+        } else {
+            None
+        };
         self.content = res.body;
         self.toc = res.toc;
         self.external_links = res.external_links;
-        self.internal_links_with_anchors = res.internal_links_with_anchors;
+        self.internal_links = res.internal_links;
 
         Ok(())
     }
@@ -275,7 +290,7 @@ impl Page {
         };
 
         let mut context = TeraContext::new();
-        context.insert("config", config);
+        context.insert("config", &config.serialize(&self.lang));
         context.insert("current_url", &self.permalink);
         context.insert("current_path", &self.path);
         context.insert("page", &self.to_serialized(library));
@@ -333,7 +348,7 @@ mod tests {
     use tera::Tera;
 
     use super::Page;
-    use config::{Config, Language};
+    use config::{Config, LanguageOptions};
     use front_matter::InsertAnchor;
     use utils::slugs::SlugifyStrategy;
 
@@ -526,6 +541,33 @@ Hello world
     }
 
     #[test]
+    fn strips_footnotes_in_summary() {
+        let config = Config::default();
+        let content = r#"
++++
++++
+This page has footnotes, here's one. [^1]
+
+<!-- more -->
+
+And here's another. [^2]
+
+[^1]: This is the first footnote.
+
+[^2]: This is the second footnote."#
+            .to_string();
+        let res = Page::parse(Path::new("hello.md"), &content, &config, &PathBuf::new());
+        assert!(res.is_ok());
+        let mut page = res.unwrap();
+        page.render_markdown(&HashMap::default(), &Tera::default(), &config, InsertAnchor::None)
+            .unwrap();
+        assert_eq!(
+            page.summary,
+            Some("<p>This page has footnotes, here\'s one. </p>\n".to_string())
+        );
+    }
+
+    #[test]
     fn page_with_assets_gets_right_info() {
         let tmp_dir = tempdir().expect("create temp dir");
         let path = tmp_dir.path();
@@ -683,6 +725,63 @@ Hello world
         assert_eq!(page.slug, "hello");
     }
 
+    // https://github.com/getzola/zola/pull/1323#issuecomment-779401063
+    #[test]
+    fn can_get_date_from_short_date_in_filename_respects_slugification_strategy() {
+        let mut config = Config::default();
+        config.slugify.paths = SlugifyStrategy::Off;
+        let content = r#"
++++
++++
+Hello world
+<!-- more -->"#
+            .to_string();
+        let res =
+            Page::parse(Path::new("2018-10-08_ こんにちは.md"), &content, &config, &PathBuf::new());
+        assert!(res.is_ok());
+        let page = res.unwrap();
+
+        assert_eq!(page.meta.date, Some("2018-10-08".to_string()));
+        assert_eq!(page.slug, " こんにちは");
+    }
+
+    #[test]
+    fn can_get_date_from_filename_with_spaces() {
+        let config = Config::default();
+        let content = r#"
++++
++++
+Hello world
+<!-- more -->"#
+            .to_string();
+        let res =
+            Page::parse(Path::new("2018-10-08 - hello.md"), &content, &config, &PathBuf::new());
+        assert!(res.is_ok());
+        let page = res.unwrap();
+
+        assert_eq!(page.meta.date, Some("2018-10-08".to_string()));
+        assert_eq!(page.slug, "hello");
+    }
+
+    #[test]
+    fn can_get_date_from_filename_with_spaces_respects_slugification() {
+        let mut config = Config::default();
+        config.slugify.paths = SlugifyStrategy::Off;
+        let content = r#"
++++
++++
+Hello world
+<!-- more -->"#
+            .to_string();
+        let res =
+            Page::parse(Path::new("2018-10-08 - hello.md"), &content, &config, &PathBuf::new());
+        assert!(res.is_ok());
+        let page = res.unwrap();
+
+        assert_eq!(page.meta.date, Some("2018-10-08".to_string()));
+        assert_eq!(page.slug, " hello");
+    }
+
     #[test]
     fn can_get_date_from_full_rfc3339_date_in_filename() {
         let config = Config::default();
@@ -703,6 +802,30 @@ Hello world
 
         assert_eq!(page.meta.date, Some("2018-10-02T15:00:00Z".to_string()));
         assert_eq!(page.slug, "hello");
+    }
+
+    // https://github.com/getzola/zola/pull/1323#issuecomment-779401063
+    #[test]
+    fn can_get_date_from_full_rfc3339_date_in_filename_respects_slugification_strategy() {
+        let mut config = Config::default();
+        config.slugify.paths = SlugifyStrategy::Off;
+        let content = r#"
++++
++++
+Hello world
+<!-- more -->"#
+            .to_string();
+        let res = Page::parse(
+            Path::new("2018-10-02T15:00:00Z- こんにちは.md"),
+            &content,
+            &config,
+            &PathBuf::new(),
+        );
+        assert!(res.is_ok());
+        let page = res.unwrap();
+
+        assert_eq!(page.meta.date, Some("2018-10-02T15:00:00Z".to_string()));
+        assert_eq!(page.slug, " こんにちは");
     }
 
     #[test]
@@ -726,7 +849,7 @@ Hello world
     #[test]
     fn can_specify_language_in_filename() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 +++
@@ -743,7 +866,7 @@ Bonjour le monde"#
     #[test]
     fn can_specify_language_in_filename_with_date() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 +++
@@ -762,7 +885,7 @@ Bonjour le monde"#
     #[test]
     fn i18n_frontmatter_path_overrides_default_permalink() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 path = "bonjour"

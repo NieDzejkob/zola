@@ -56,12 +56,11 @@ pub struct Section {
     /// The language of that section. Equal to the default lang if the user doesn't setup `languages` in config.
     /// Corresponds to the lang in the _index.{lang}.md file scheme
     pub lang: String,
-    /// Contains the internal links that have an anchor: we can only check the anchor
-    /// after all pages have been built and their ToC compiled. The page itself should exist otherwise
-    /// it would have errored before getting there
-    /// (path to markdown, anchor value)
-    pub internal_links_with_anchors: Vec<(String, String)>,
-    /// Contains the external links that need to be checked
+    /// The list of all internal links (as path to markdown file), with optional anchor fragments.
+    /// We can only check the anchor after all pages have been built and their ToC compiled.
+    /// The page itself should exist otherwise it would have errored before getting there.
+    pub internal_links: Vec<(String, Option<String>)>,
+    /// The list of all links to external webpages. They can be validated by the `link_checker`.
     pub external_links: Vec<String>,
 }
 
@@ -172,6 +171,7 @@ impl Section {
         let mut context = RenderContext::new(
             tera,
             config,
+            &self.lang,
             &self.permalink,
             permalinks,
             self.meta.insert_anchor_links,
@@ -185,7 +185,7 @@ impl Section {
         self.content = res.body;
         self.toc = res.toc;
         self.external_links = res.external_links;
-        self.internal_links_with_anchors = res.internal_links_with_anchors;
+        self.internal_links = res.internal_links;
 
         Ok(())
     }
@@ -195,7 +195,7 @@ impl Section {
         let tpl_name = self.get_template_name();
 
         let mut context = TeraContext::new();
-        context.insert("config", config);
+        context.insert("config", &config.serialize(&self.lang));
         context.insert("current_url", &self.permalink);
         context.insert("current_path", &self.path);
         context.insert("section", &self.to_serialized(library));
@@ -254,7 +254,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::Section;
-    use config::{Config, Language};
+    use config::{Config, LanguageOptions};
 
     #[test]
     fn section_with_assets_gets_right_info() {
@@ -312,7 +312,7 @@ mod tests {
     #[test]
     fn can_specify_language_in_filename() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 +++
@@ -334,7 +334,7 @@ Bonjour le monde"#
     #[test]
     fn can_make_links_to_translated_sections_without_double_trailing_slash() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 +++
@@ -351,7 +351,7 @@ Bonjour le monde"#
     #[test]
     fn can_make_links_to_translated_subsections_with_trailing_slash() {
         let mut config = Config::default();
-        config.languages.push(Language { code: String::from("fr"), feed: false, search: false });
+        config.languages.insert("fr".to_owned(), LanguageOptions::default());
         let content = r#"
 +++
 +++

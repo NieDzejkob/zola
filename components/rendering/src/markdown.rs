@@ -25,7 +25,9 @@ pub struct Rendered {
     pub body: String,
     pub summary_len: Option<usize>,
     pub toc: Vec<Heading>,
-    pub internal_links_with_anchors: Vec<(String, String)>,
+    /// Links to site-local pages: relative path plus optional anchor target.
+    pub internal_links: Vec<(String, Option<String>)>,
+    /// Outgoing links to external webpages (i.e. HTTP(S) targets).
     pub external_links: Vec<String>,
 }
 
@@ -48,7 +50,7 @@ impl HeadingRef {
 // for example an article could have several titles named Example
 // We add a counter after the slug if the slug is already present, which
 // means we will have example, example-1, example-2 etc
-fn find_anchor(anchors: &[String], name: String, level: u8) -> String {
+fn find_anchor(anchors: &[String], name: String, level: u16) -> String {
     if level == 0 && !anchors.contains(&name) {
         return name;
     }
@@ -92,7 +94,7 @@ fn fix_link(
     link_type: LinkType,
     link: &str,
     context: &RenderContext,
-    internal_links_with_anchors: &mut Vec<(String, String)>,
+    internal_links: &mut Vec<(String, Option<String>)>,
     external_links: &mut Vec<String>,
 ) -> Result<String> {
     if link_type == LinkType::Email {
@@ -106,10 +108,7 @@ fn fix_link(
     let result = if link.starts_with("@/") {
         match resolve_internal_link(&link, &context.permalinks) {
             Ok(resolved) => {
-                if resolved.anchor.is_some() {
-                    internal_links_with_anchors
-                        .push((resolved.md_path.unwrap(), resolved.anchor.unwrap()));
-                }
+                internal_links.push((resolved.md_path, resolved.anchor));
                 resolved.permalink
             }
             Err(_) => {
@@ -174,7 +173,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
 
     let mut inserted_anchors: Vec<String> = vec![];
     let mut headings: Vec<Heading> = vec![];
-    let mut internal_links_with_anchors = Vec::new();
+    let mut internal_links = Vec::new();
     let mut external_links = Vec::new();
 
     let mut opts = Options::empty();
@@ -215,7 +214,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
                             _ => None,
                         };
 
-                        if !context.config.highlight_code() {
+                        if !context.config.markdown.highlight_code {
                             if let Some(lang) = language {
                                 let html = format!(
                                     r#"<pre><code class="language-{}" data-lang="{}">"#,
@@ -269,7 +268,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
                         Event::Html(html.into())
                     }
                     Event::End(Tag::CodeBlock(_)) => {
-                        if !context.config.highlight_code() {
+                        if !context.config.markdown.highlight_code {
                             return Event::Html("</code></pre>\n".into());
                         }
                         // reset highlight and close the code block
@@ -293,7 +292,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
                             link_type,
                             &link,
                             context,
-                            &mut internal_links_with_anchors,
+                            &mut internal_links,
                             &mut external_links,
                         ) {
                             Ok(fixed_link) => fixed_link,
@@ -428,7 +427,7 @@ pub fn markdown_to_html(content: &str, context: &RenderContext) -> Result<Render
             summary_len: if has_summary { html.find(CONTINUE_READING) } else { None },
             body: html,
             toc: make_table_of_contents(headings),
-            internal_links_with_anchors,
+            internal_links,
             external_links,
         })
     }
