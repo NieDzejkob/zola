@@ -171,38 +171,85 @@ If your site source is laid out as follows:
 
 you would set your `extra_syntaxes` to `["syntaxes", "syntaxes/Sublime-Language1"]` to load `lang1.sublime-syntax` and `lang2.sublime-syntax`.
 
-## Annotations
+## Custom Highlighting Themes
 
-You can use additional annotations to customize how code blocks are displayed:
+The default *theme* for syntax highlighting is called `base16-ocean-dark`, you can choose another theme from the built in set of highlight themes using the `highlight_theme` configuration option.
+For example, this documentation site currently uses the `kronuz` theme, which is built in.
 
-- `linenos` to enable line numbering.
-
-````
-```rust,linenos
-use highlighter::highlight;
-let code = "...";
-highlight(code);
 ```
-````
-
-- `hl_lines` to highlight lines. You must specify a list of ranges of lines to highlight,
-separated by ` `. Ranges are 1-indexed.
-  
-````
-```rust,hl_lines=3
-use highlighter::highlight;
-let code = "...";
-highlight(code);
+[markdown]
+highlight_code = true
+highlight_theme = "kronuz"
 ```
-````
 
-- `hide_lines` to hide lines. You must specify a list of ranges of lines to hide,
-separated by ` `. Ranges are 1-indexed.
-  
-````
-```rust,hide_lines=1-2
-use highlighter::highlight;
-let code = "...";
-highlight(code);
+Alternatively, the `extra_highlight_themes` configuration option can be used to add additional theme files.
+You can load your own highlight theme from a TextMate `.tmTheme` file using the `extra_highlight_themes` option.
+
+It works the same way as the `extra_syntaxes` option. It should contain a list of paths to folders containing the .tmTheme files you want to include.
+You would then set `highlight_theme` to the name of one of these files, without the `.tmTheme` extension.
+
+If your site source is laid out as follows:
+
 ```
-````
+.
+├── config.toml
+├── content/
+│   └── ...
+├── static/
+│   └── ...
+├── highlight_themes/
+│   ├── MyGroovyTheme/
+│   │   └── theme1.tmTheme
+│   ├── theme2.tmTheme
+└── templates/
+    └── ...
+```
+
+you would set your `extra_highlight_themes` to `["highlight_themes", "highlight_themes/MyGroovyTheme"]` to load `theme1.tmTheme` and `theme2.tmTheme`.
+Then choose one of them to use, say theme2, by setting `highlight_theme = theme2`.
+
+Below is a full list of built in highlighting themes:
+```
+1337
+agola-dark
+ascetic-white
+axar
+ayu-dark
+ayu-light
+ayu-mirage
+base16-ocean-dark
+base16-ocean-light
+bbedit
+boron
+charcoal
+cheerfully-light
+classic-modified
+demain
+dimmed-fluid
+dracula
+gray-matter-dark
+green
+gruvbox-dark
+gruvbox-light
+idle
+inspired-github
+ir-white
+kronuz
+material-dark
+material-light
+monokai
+nord
+nyx-bold
+one-dark
+OneHalfDark
+OneHalfLight
+railsbase16-green-screen-dark
+solarized-dark
+solarized-light
+subway-madrid
+subway-moscow
+Tomorrow
+two-dark
+visual-studio-dark
+zenburn
+```

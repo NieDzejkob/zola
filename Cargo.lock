@@ -299,6 +299,7 @@ dependencies = [
  "errors",
  "globset",
  "lazy_static",
+ "once_cell",
  "serde",
  "serde_derive",
  "syntect",
