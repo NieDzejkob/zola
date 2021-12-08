@@ -3,6 +3,7 @@ use pulldown_cmark as cmark;
 
 use crate::context::RenderContext;
 use crate::table_of_contents::{make_table_of_contents, Heading};
+use config::SectionTagsMode;
 use errors::{Error, Result};
 use front_matter::InsertAnchor;
 use utils::site::resolve_internal_link;
@@ -147,7 +148,7 @@ fn get_heading_refs(events: &[Event]) -> Vec<HeadingRef> {
 /// A `<section>` tag is opened for any new `<h{N}>` tag, and any opened tags will be closed when
 /// a header tag is found which is at an equal or lower level in the hierarchy. (typically we would
 /// say that `<h1>` is "higher" in the hierarchy, but here "level" indicates the degree of nesting)
-fn wrap_page_sections(events : &mut Vec<Event>) -> () {
+fn make_hierarchical_sections(events : &mut Vec<Event>) -> () {
     // Keep track of levels we've visited
     let mut level_stack : Vec<u32> = Vec::new();
     // Keep track of items that have been inserted, so we can find the delta between the index a
@@ -203,6 +204,38 @@ fn wrap_page_sections(events : &mut Vec<Event>) -> () {
         events.push(Event::Html("</section>".into()));
         items_added += 1;
         level_stack.pop();
+    }
+}
+
+/// Accepts `Vec<pulldown_cmark::Event>`, and modifies it so that page/document sections are
+/// wrapped in HTML `<section>` tags.
+///
+/// Unlike [`make_hierarchical_sections`], any subsections get hoisted to the top-level,
+/// and do not get nested.
+fn make_flat_sections(events : &mut Vec<Event>) -> () {
+    let mut in_section = false;
+    // Keep track of items that have been inserted, so we can find the delta between the index a
+    // `Heading` had in the initial vector and after modifying it
+    let mut items_added = 0;
+
+    for (n, event) in events.clone().into_iter().enumerate() {
+        match event {
+            Event::Start(Tag::Heading(_)) => {
+                if !in_section {
+                    events.insert(n + items_added, Event::Html("<section>".into()));
+                    items_added += 1;
+                    in_section = true;
+                } else {
+                    events.insert(n + items_added, Event::Html("</section><section>".into()));
+                    items_added += 1;
+                }
+            }
+            _ => ()
+        }
+    }
+
+    if in_section {
+        events.push(Event::Html("</section>".into()));
     }
 }
 
@@ -454,8 +487,10 @@ pub fn markdown_to_html(
         // If user wants page sections wrapped in <section> tags, we do this before managing
         // headings. This way we don't interfere with the code that builds an index of Heading
         // locations.
-        if context.config.markdown.render_with_section_tags {
-            wrap_page_sections(&mut events);
+        match context.config.markdown.render_with_section_tags {
+            None => {},
+            Some(SectionTagsMode::Hierarchical) => make_hierarchical_sections(&mut events),
+            Some(SectionTagsMode::Flat) => make_flat_sections(&mut events),
         }
 
         let mut heading_refs = get_heading_refs(&events);
